@@ -1,0 +1,10 @@
+services:
+  python3-executor:
+    build:
+      dockerfile: Containerfile
+      context: .
+    volumes:
+      - .:/workspace
+    environment:
+      GRUNDFOSKORET_USERNAME: "${GRUNDFOSKORET_USERNAME:-}"
+      GRUNDFOSKORET_PASSWORD: "${GRUNDFOSKORET_PASSWORD:-}"

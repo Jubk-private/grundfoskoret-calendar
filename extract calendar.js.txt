@@ -1,0 +1,32 @@
+function elemToData(elem) {
+    const title = elem.childNodes[0].textContent;
+    const dateText = elem.childNodes[1].textContent;
+    const timeText = elem.childNodes[2].textContent;
+    const [dayText, monthText, yearText] = dateText.trim().replace(/.*d\.\s*/, '').split(/\s+/);
+    const monthMap = {
+        januar: '01',
+        februar: '02',
+        marts: '03',
+        april: '04',
+        maj: '05',
+        juni: '06',
+        juli: '07',
+        august: '08',
+        september: '09',
+        october: '10',
+        november: '11',
+        december: '12'
+    };
+    const zeroPad = (value) => value.length > 1 ? value : `0${value}`;
+    const year = yearText;
+    const month = monthMap[monthText.toLowerCase()];
+    const day = zeroPad(dayText.replace('.', ''));
+    const [fromTimeText, toTimeText] = timeText.trim().split(/\s*-\s*/);
+    const [fromHour, fromMin] = fromTimeText.split(":").map(zeroPad);
+    const [toHour, toMin] = toTimeText.split(":").map(zeroPad);
+    return {
+        title: title,
+        from: new Date(`${year}-${month}-${day}T${fromHour}:${fromMin}:00`),
+        to: new Date(`${year}-${month}-${day}T${toHour}:${toMin}:00`)
+    }
+}; $('.calendar-event-title').toArray().map(e => elemToData(e)).filter(d => d.from.getFullYear() >= 2024 && d.from.getMonth() > 4)[0]
