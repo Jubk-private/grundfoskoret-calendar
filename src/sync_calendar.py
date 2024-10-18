@@ -171,6 +171,7 @@ def eventdata_to_calendar(eventdata_list: List[Dict[str, any]]) -> icalendar.Cal
     calendar.add_component(get_vtimezone())
 
     now = TIMEZONE.localize(datetime.datetime.now())
+    sequence = int(now.strftime('%y%m%d%H%M'))
 
     event_counters = {}
 
@@ -180,11 +181,11 @@ def eventdata_to_calendar(eventdata_list: List[Dict[str, any]]) -> icalendar.Cal
         start_date = eventdata['start']
 
         event.add('uid', get_uuid(start_date, event_counters))
-        event.add('dtstamp', now)
-        event.add('name', eventdata['title'])
         event.add('summary', eventdata['title'])
+        event.add('dtstamp', now)
         event.add('dtstart', start_date)
         event.add('dtend', eventdata['end'])
+        event.add('sequence', sequence)
 
         if eventdata['cancelled']:
             event.add('method', 'CANCEL')
