@@ -182,6 +182,7 @@ def eventdata_to_calendar(eventdata_list: List[Dict[str, any]]) -> icalendar.Cal
         event.add('uid', get_uuid(start_date, event_counters))
         event.add('dtstamp', now)
         event.add('name', eventdata['title'])
+        event.add('description', eventdata['title'])
         event.add('dtstart', start_date)
         event.add('dtend', eventdata['end'])
 
@@ -195,7 +196,6 @@ def eventdata_to_calendar(eventdata_list: List[Dict[str, any]]) -> icalendar.Cal
 
 
 def write_calendar_to_file(calendar: icalendar.Calendar) -> None:
-    print(ICS_FILENAME)
     with open(ICS_FILENAME, 'wb') as f:
         f.write(calendar.to_ical())
 
