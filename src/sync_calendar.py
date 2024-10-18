@@ -1,17 +1,26 @@
 #!/usr/bin/env python3
 
 import datetime
+import hashlib
+import icalendar
 import os
 import pytz
 import requests
+import uuid
 
 from bs4 import BeautifulSoup
+from typing import List, Dict
 
 CALENDAR_PAGE_URL = 'https://m.grundfoskoret.dk/korkalender'
 USERNAME = os.environ.get('GRUNDFOSKORET_USERNAME')
 PASSWORD = os.environ.get('GRUNDFOSKORET_PASSWORD')
 
 TIMEZONE = pytz.timezone("Europe/Copenhagen")
+
+SRC_DIR = os.path.dirname(os.path.abspath(__file__))
+ROOT_DIR = os.path.dirname(SRC_DIR)
+DATA_DIR = os.path.join(ROOT_DIR, "data")
+ICS_FILENAME = os.path.join(DATA_DIR, "grundfoskoret.ics")
 
 MONTH_MAP = {
     'januar': 1,
@@ -29,7 +38,7 @@ MONTH_MAP = {
 }
 
 
-def parse_date(date_text):
+def parse_date(date_text: str) -> Dict[str, any]:
     if " - " in date_text:
         return parse_double_date(date_text)
     else:
@@ -39,7 +48,7 @@ def parse_date(date_text):
         }
 
 
-def parse_double_date(date_text):
+def parse_double_date(date_text: str) -> Dict[str, any]:
     (start_text, end_text) = date_text.split(" - ")
     return {
         **parse_single_date(start_text, 'start_'),
@@ -47,7 +56,7 @@ def parse_double_date(date_text):
     }
 
 
-def parse_single_date(date_text, prefix=''):
+def parse_single_date(date_text: str, prefix: str = '') -> Dict[str, any]:
     date_text = date_text.partition("d. ")[2]
     (day_text, month_name, year_text) = date_text.split(" ")
     day = int(day_text.replace(".", ""))
@@ -57,7 +66,7 @@ def parse_single_date(date_text, prefix=''):
     return {prefix + 'day': day, prefix + 'month': month, prefix + 'year': year}
 
 
-def parse_time(time_text):
+def parse_time(time_text: str) -> Dict[str, any]:
     (start_text, end_text) = time_text.split(" - ")
     (start_hour, start_min) = [int(x) for x in start_text.split(":")]
     (end_hour, end_min) = [int(x) for x in end_text.split(":")]
@@ -66,7 +75,7 @@ def parse_time(time_text):
             'end_hour': end_hour, 'end_minute': end_min}
 
 
-def parse_events(html):
+def parse_events(html: str) -> List[Dict[str, any]]:
     soup = BeautifulSoup(html, 'html.parser')
 
     result = []
@@ -111,21 +120,96 @@ def parse_events(html):
         if title and date_text and time_text:
             result.append({
                 'title': title,
-                'start': start_datetime.isoformat(),
-                'end': end_datetime.isoformat(),
+                'start': start_datetime,
+                'end': end_datetime,
                 'cancelled': "aflyst" in title.lower()
             })
 
     return result
 
 
-def main():
+def get_uuid(dt: datetime, counter_map: Dict[str, int]) -> str:
+    date_part = dt.date().isoformat()
+
+    counter = counter_map.get(date_part, 0)
+    counter = counter + 1
+    counter_map[date_part] = counter
+
+    unique_value = '%s:%d' % (date_part, counter)
+
+    hexvalue = hashlib.md5(unique_value.encode('utf-8')).hexdigest()
+
+    return uuid.UUID(hexvalue)
+
+
+def get_vtimezone() -> icalendar.cal.Timezone:
+    tz = icalendar.cal.Timezone()
+    tz.add('tzid', 'Europe/Copenhagen')
+    daylight = icalendar.cal.TimezoneDaylight()
+    daylight.add('tzname', 'CEST')
+    daylight.add('tzoffsetfrom', datetime.timedelta(hours=1))
+    daylight.add('tzoffsetto', datetime.timedelta(hours=2))
+    daylight.add('dtstart', datetime.datetime.fromtimestamp(0))
+    daylight.add('rrule', {'freq': 'YEARLY', 'bymonth': 3, 'byday': '-1SU'})
+    tz.add_component(daylight)
+    standard = icalendar.cal.TimezoneStandard()
+    standard.add('tzname', 'CET')
+    standard.add('tzoffsetfrom', datetime.timedelta(hours=2))
+    standard.add('tzoffsetto', datetime.timedelta(hours=1))
+    standard.add('dtstart', datetime.datetime.fromtimestamp(0))
+    standard.add('rrule', {'freq': 'YEARLY', 'bymonth': 10, 'byday': '-1SU'})
+    tz.add_component(standard)
+
+    return tz
+
+
+def eventdata_to_calendar(eventdata_list: List[Dict[str, any]]) -> icalendar.Calendar:
+    calendar = icalendar.Calendar()
+
+    calendar.add('prodid', '-//grundfoskoret-calendar//grundfoskoret.dk//')
+    calendar.add('version', '2.0')
+    calendar.add_component(get_vtimezone())
+
+    now = TIMEZONE.localize(datetime.datetime.now())
+
+    event_counters = {}
+
+    for eventdata in eventdata_list:
+        event = icalendar.Event()
+
+        start_date = eventdata['start']
+
+        event.add('uid', get_uuid(start_date, event_counters))
+        event.add('dtstamp', now)
+        event.add('name', eventdata['title'])
+        event.add('dtstart', start_date)
+        event.add('dtend', eventdata['end'])
+
+        if eventdata['cancelled']:
+            event.add('method', 'CANCEL')
+            event.add('status', 'CANCELLED')
+
+        calendar.add_component(event)
+
+    return calendar
+
+
+def write_calendar_to_file(calendar: icalendar.Calendar) -> None:
+    print(ICS_FILENAME)
+    with open(ICS_FILENAME, 'wb') as f:
+        f.write(calendar.to_ical())
+
+
+def main() -> None:
+
     response = requests.post(CALENDAR_PAGE_URL, data={
         "frontend_login_username": USERNAME,
         "frontend_login_password": PASSWORD
     })
 
-    print(parse_events(response.text))
+    eventdata = parse_events(response.text)
+    calendar = eventdata_to_calendar(eventdata)
+    write_calendar_to_file(calendar)
 
 
 if __name__ == '__main__':
